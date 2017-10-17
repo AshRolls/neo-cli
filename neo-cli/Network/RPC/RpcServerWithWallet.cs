@@ -1,7 +1,9 @@
 ﻿using Neo.Core;
+using Neo.Cryptography.ECC;
 using Neo.IO.Json;
 using Neo.SmartContract;
 using Neo.Wallets;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -133,6 +135,36 @@ namespace Neo.Network.RPC
                         UInt160 scriptHash = Wallet.ToScriptHash(_params[0].AsString());
                         KeyPair key = Program.Wallet.GetKeyByScriptHash(scriptHash);
                         return key.Export();
+                    }
+                case "createmultisig":
+                    if (Program.Wallet == null)
+                        throw new RpcException(-400, "Access denied");
+                    else
+                    {
+                        JArray publicKeyStrings = (JArray)_params[0];
+                        if (publicKeyStrings.Count == 0)
+                            throw new RpcException(-32602, "Invalid params");
+
+                        int minSigNumber = int.Parse(_params[1].AsString());
+
+                        ECPoint[] publicKeys = new ECPoint[publicKeyStrings.Count];
+                        for (int i = 0; i < publicKeyStrings.Count; i++)
+                        {
+                            String pk = publicKeyStrings[i].AsString();
+                            publicKeys[i] = ECPoint.DecodePoint(pk.HexToBytes(), ECCurve.Secp256r1);
+                        }
+                        VerificationContract vc = null;
+                        foreach (ECPoint publicKey in publicKeys)
+                        {
+                            KeyPair key = Program.Wallet.GetKey(publicKey.EncodePoint(true).ToScriptHash());
+                            if (key != null)
+                            {
+                                vc = VerificationContract.CreateMultiSigContract(key.PublicKeyHash, minSigNumber, publicKeys);
+                                Program.Wallet.AddContract(vc);
+                                return vc.Address;
+                            }
+                        }
+                        throw new RpcException(-100, "Unknown contract");
                     }
                 default:
                     return base.Process(method, _params);
