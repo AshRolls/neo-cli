@@ -9,6 +9,7 @@ using Neo.Network;
 using Neo.Network.RPC;
 using Neo.Services;
 using Neo.SmartContract;
+using Neo.Cryptography.ECC;
 using Neo.VM;
 using Neo.Wallets;
 using System;
@@ -16,7 +17,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using System.Security.Cryptography;
 using System.Threading.Tasks;
 
 namespace Neo.Shell
@@ -482,7 +482,7 @@ namespace Neo.Shell
                 {
                     Program.Wallet = UserWallet.Open(path, password);
                 }
-                catch (CryptographicException)
+                catch (System.Security.Cryptography.CryptographicException)
                 {
                     Console.WriteLine($"failed to open file \"{path}\"");
                     return true;
@@ -495,7 +495,7 @@ namespace Neo.Shell
                 {
                     nep6wallet.Unlock(password);
                 }
-                catch (CryptographicException)
+                catch (System.Security.Cryptography.CryptographicException)
                 {
                     Console.WriteLine($"failed to open file \"{path}\"");
                     return true;
@@ -826,6 +826,8 @@ namespace Neo.Shell
             {
                 case "wallet":
                     return OnUpgradeWalletCommand(args);
+                case "walletconsensus":
+                    return OnUpgradeWalletConsensusCommand(args);
                 default:
                     return base.OnCommand(args);
             }
@@ -858,6 +860,47 @@ namespace Neo.Shell
             string path_new = Path.ChangeExtension(path, ".json");
             NEP6Wallet.Migrate(path_new, path, password).Save();
             Console.WriteLine($"Wallet file upgrade complete. New wallet file has been auto-saved at: {path_new}");
+            return true;
+        }
+
+        private bool OnUpgradeWalletConsensusCommand(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.WriteLine("error");
+                return true;
+            }
+            string path = args[2];
+            if (Path.GetExtension(path) == ".db3")
+            {
+                Console.WriteLine("Can't upgrade this wallet file. Use 'Upgrade Wallet' to upgrade to NEP6 first");
+                return true;
+            }
+            if (!File.Exists(path))
+            {
+                Console.WriteLine("File does not exist.");
+                return true;
+            }
+            string password = ReadPassword("password");
+            if (password.Length == 0)
+            {
+                Console.WriteLine("cancelled");
+                return true;
+            }
+            NEP6Wallet nep6wallet = new NEP6Wallet(path);
+            try
+            {
+                nep6wallet.Unlock(password);
+            }
+            catch (System.Security.Cryptography.CryptographicException)
+            {
+                Console.WriteLine($"failed to open file \"{path}\"");
+                return true;
+            }
+            ECPoint[] validators = Blockchain.Default.GetValidators();
+            nep6wallet.CreateAccount(Blockchain.GetConsensusAddress(validators));            
+            nep6wallet.Save();
+            Console.WriteLine($"Wallet file consensus contract added.");
             return true;
         }
 
