@@ -898,7 +898,11 @@ namespace Neo.Shell
                 return true;
             }
             ECPoint[] validators = Blockchain.Default.GetValidators();
-            nep6wallet.CreateAccount(Blockchain.GetConsensusAddress(validators));            
+            Contract consensusContract = Contract.CreateMultiSigContract(validators.Length - (validators.Length - 1) / 3, validators);
+            IEnumerable<KeyPair> keys = nep6wallet.GetAccounts().Where(p => p.HasKey).Select(p => p.GetKey());
+            KeyPair key = keys.First(); // quick n dirty
+           
+            nep6wallet.CreateAccount(consensusContract, key);            
             nep6wallet.Save();
             Console.WriteLine($"Wallet file consensus contract added.");
             return true;
